@@ -69,6 +69,31 @@ if run or ticker:
 
         tab1, tab2, tab3 = st.tabs(["📊 Chart", "📈 Backtest", "🔍 Why this signal"])
 
+        # --- Entry / Exit Plan (only for BUY signals) ---
+        if sig == "BUY":
+            entry = latest["Close"]
+            atr = latest["atr_14"]
+            stop = entry - 2 * atr
+            target = entry + 4 * atr
+            risk_pct = (entry - stop) / entry * 100
+            reward_pct = (target - entry) / entry * 100
+
+            st.markdown("### 📋 Trade Plan (if you took this signal)")
+            p1, p2, p3, p4 = st.columns(4)
+            p1.metric("Entry", f"${entry:.2f}")
+            p2.metric("Stop-loss", f"${stop:.2f}", f"-{risk_pct:.1f}%")
+            p3.metric("Target", f"${target:.2f}", f"+{reward_pct:.1f}%")
+            p4.metric("Max hold", "10 days")
+            st.caption(
+                f"Plan uses the same rules as the backtest: stop at 2×ATR below entry, "
+                f"target at 4×ATR above, exit after 10 trading days. "
+                f"Risk/reward ≈ 1:{reward_pct/risk_pct:.1f}. "
+                f"⚠️ This is the model's mechanical plan, not advice — and the signal is unproven live."
+            )
+        else:
+            st.info(f"No trade plan shown — current signal is **{sig}**, not BUY. "
+                    f"A plan only makes sense when the model says BUY.")
+
         with tab1:
             fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
                                 row_heights=[0.7, 0.3], vertical_spacing=0.05,
