@@ -7,7 +7,7 @@ from src.data.collector import DataCollector
 from src.features.technical import TechnicalFeatures
 from src.models.day_trade_model import DayTradeModel
 
-st.set_page_config(page_title="Day-Trade Scanner", layout="wide", page_icon="⚡")
+st.set_page_config(page_title="Day-Trade Scanner", layout="wide")
 
 
 @st.cache_resource
@@ -17,7 +17,7 @@ def load_model():
     return m
 
 
-@st.cache_data(ttl=300)  # cache 5 min only — intraday changes fast
+@st.cache_data(ttl=300)
 def scan(ticker):
     collector = DataCollector()
     feat = TechnicalFeatures()
@@ -29,32 +29,39 @@ def scan(ticker):
         df = feat.add_all_features(df_raw)
         df = model.predict(df)
         latest = df.iloc[-1]
+        price = latest["Close"]
+        atr = latest["atr_14"]
+        sig = latest["signal"]
+        stop = round(price - 1.0 * atr, 2) if sig == "BUY" else "-"
+        target = round(price + 1.5 * atr, 2) if sig == "BUY" else "-"
         return {
             "Ticker": ticker,
-            "Signal": latest["signal"],
+            "Signal": sig,
             "Confidence": round(latest["confidence"] * 100, 1),
-            "Price": round(latest["Close"], 2),
+            "Price": round(price, 2),
+            "Stop": stop,
+            "Target": target,
+            "Exit by": "End of day" if sig == "BUY" else "-",
             "RSI": round(latest["rsi_14"], 1),
-            "Vol vs avg": round(latest["volume_ratio"], 2),
-            "ATR": round(latest["atr_14"], 2),
+            "ATR": round(atr, 2),
         }
     except Exception:
         return None
 
 
-st.title("⚡ Day-Trade Scanner (5-min bars)")
-st.caption("Intraday signals · predicts ~1hr ahead · ⚠️ thinner & riskier than swing signals")
+st.title("Day-Trade Scanner (5-min bars)")
+st.caption("Intraday signals - predicts ~1hr ahead - thinner and riskier than swing")
 
-st.warning("⚠️ **Day-trade signals are experimental and high-risk.** The intraday model "
+st.warning("Day-trade signals are experimental and high-risk. The intraday model "
            "trains on only ~60 days of data with an unstable edge (AUC ~0.53). "
            "Transaction costs hit intraday trades hardest. Treat with extra caution.")
 
 with st.sidebar:
-    st.header("⚙️ Settings")
+    st.header("Settings")
     default = "AAPL, MSFT, NVDA, AMD, TSLA, META, AMZN, GOOGL, SPY, QQQ, AMC, INTC, BAC, F"
     tickers_input = st.text_area("Tickers (liquid stocks only)", default, height=100)
     show_only = st.radio("Show", ["All", "BUY only", "BUY + SELL"], index=0)
-    scan_btn = st.button("⚡ Scan Now", type="primary", use_container_width=True)
+    scan_btn = st.button("Scan Now", type="primary", use_container_width=True)
     st.caption("Only run during market hours for live signals.")
 
 if scan_btn:
@@ -76,9 +83,9 @@ if scan_btn:
         sells = (all_df["Signal"] == "SELL").sum()
         holds = (all_df["Signal"] == "HOLD").sum()
         c1, c2, c3 = st.columns(3)
-        c1.metric("🟢 BUY", buys)
-        c2.metric("🟡 HOLD", holds)
-        c3.metric("🔴 SELL", sells)
+        c1.metric("BUY", buys)
+        c2.metric("HOLD", holds)
+        c3.metric("SELL", sells)
 
         df = all_df.copy()
         if show_only == "BUY only":
@@ -86,6 +93,11 @@ if scan_btn:
         elif show_only == "BUY + SELL":
             df = df[df["Signal"].isin(["BUY", "SELL"])]
         df = df.sort_values("Confidence", ascending=False).reset_index(drop=True)
+
+        st.caption("Stop/Target for BUY rows use intraday rules (1x ATR stop, "
+                   "1.5x ATR target, exit by end of day). UNLIKE the swing plan, "
+                   "these are NOT backtested - the day-trade model is unvalidated "
+                   "(AUC ~0.53, unstable). Treat as experimental only.")
 
         def highlight(row):
             style = {"BUY": "background-color: #1e7e4f; color: white; font-weight: bold",
@@ -98,4 +110,4 @@ if scan_btn:
         else:
             st.dataframe(df.style.apply(highlight, axis=1), use_container_width=True, height=500)
 else:
-    st.info("👈 Click **Scan Now** to check intraday signals.")
+    st.info("Click Scan Now to check intraday signals.")
